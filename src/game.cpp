@@ -52,10 +52,14 @@ Game::Game(
     const std::optional<std::filesystem::path>& scenario,
     const std::optional<std::filesystem::path>& soak_directory,
     std::size_t soak_runs)
-    : scripts_(data / "SDT.PAK"), graphics_(data / "GRP.PAK"),
-      backgrounds_(data / "bak.pak"), fonts_(data / "FNT.PAK"),
-      bgm_archive_(data / "bgm.PAK"), se_archive_(data / "SE.PAK"),
-      voice_archive_(data / "voice.pak"), movie_archive_(data / "mov.pak"),
+    : scripts_(data / "SDT.PAK", data / "patch.pak"),
+      graphics_(data / "GRP.PAK", data / "patch.pak"),
+      backgrounds_(data / "bak.pak", data / "patch.pak"),
+      fonts_(data / "FNT.PAK", data / "patch.pak"),
+      bgm_archive_(data / "bgm.PAK", data / "patch.pak"),
+      se_archive_(data / "SE.PAK", data / "patch.pak"),
+      voice_archive_(data / "voice.pak", data / "patch.pak"),
+      movie_archive_(data / "mov.pak", data / "patch.pak"),
       runtime_(scripts_),
       config_path_(ensure_parent_directory(soak_directory
           ? *soak_directory / "config.ini"
@@ -660,6 +664,9 @@ using th2app::writable_directory;
 int main(int argc, char** argv)
 {
     try {
+#ifndef __ANDROID__
+        th2app::start_log_file();
+#endif
         SdlSubsystem sdl_subsystem;
 #ifdef __ANDROID__
         std::filesystem::path data =
@@ -731,17 +738,16 @@ int main(int argc, char** argv)
             SDL_LogError(
                 SDL_LOG_CATEGORY_APPLICATION,
                 "Game data directory not found or invalid: %s",
-                data.string().c_str());
+                th2app::path_to_utf8(data).c_str());
             return 1;
         }
         data = *discovered_data;
-        SDL_Log("Game data path: %s", data.string().c_str());
+        SDL_Log("Game data path: %s", th2app::path_to_utf8(data).c_str());
         SDL_Log("Game files found, starting engine");
 
         return Game(data, scenario, soak_directory, soak_runs).run();
     } catch (const std::exception& error) {
-        SDL_LogError(
-            SDL_LOG_CATEGORY_APPLICATION, "Fatal error: %s", error.what());
+        th2app::report_fatal_error(std::string("Fatal error: ") + error.what());
         return 1;
     }
 }

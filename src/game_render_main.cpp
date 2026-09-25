@@ -577,7 +577,7 @@ void Game::draw_frame()
                     std::max(
                         1, static_cast<int>(
                             std::ceil(glyph_right - glyph_left))),
-                    31};
+                    static_cast<int>(std::ceil(text_line_height()))};
                 SDL_SetRenderClipRect(renderer_, &clip);
                 font_.draw(renderer_, x + 2.0f, y + 2.0f, line, 0, 0, 0, alpha);
                 font_.draw(renderer_, x, y, line, 255, 255, 255, alpha);

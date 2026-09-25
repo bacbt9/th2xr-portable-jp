@@ -15,22 +15,21 @@ namespace th2 {
 namespace {
 
 constexpr std::size_t full_glyph_count = 7023;
-constexpr std::size_t full_glyph_bytes = 24 * 24 / 2;
-constexpr std::size_t half_glyph_bytes = 24 * 12 / 2;
-constexpr std::size_t ascii_offset = full_glyph_count * full_glyph_bytes;
-constexpr int save_menu_size = 16;
-constexpr int save_menu_width = 8;
-constexpr std::size_t save_menu_full_glyph_bytes =
-    save_menu_size * save_menu_size / 2;
-constexpr std::size_t save_menu_half_glyph_bytes =
-    save_menu_size * save_menu_width / 2;
-constexpr std::size_t save_menu_ascii_offset =
-    full_glyph_count * save_menu_full_glyph_bytes;
 constexpr std::size_t half_glyph_bitmap_count = 157;
-constexpr std::size_t shadow_full_bytes = 14 * 28;
-constexpr std::size_t shadow_half_bytes = 8 * 28;
-constexpr std::size_t shadow_ascii_offset =
-    4 + full_glyph_count * shadow_full_bytes;
+constexpr int save_menu_size = 16;
+constexpr int save_menu_width = save_menu_size / 2;
+
+// 4-bit glyph bitmaps, rows padded to whole bytes (FNT_DrawChar):
+// full-width glyphs are size x size, half-width ones size/2 x size.
+constexpr std::size_t glyph_bytes(int glyph_width, int glyph_height)
+{
+    return static_cast<std::size_t>((glyph_width + 1) / 2) * glyph_height;
+}
+
+constexpr std::size_t ascii_offset(int font_size)
+{
+    return full_glyph_count * glyph_bytes(font_size, font_size);
+}
 
 int glyph_index(unsigned char character)
 {
@@ -179,40 +178,59 @@ bool has_ruby(std::string_view text)
 
 }  // namespace
 
+namespace {
+
+std::string missing_font_message(const Archive& archive, std::string_view name)
+{
+    std::string message = std::string(name) + " not found in "
+        + archive.path().filename().string() + "; it contains:";
+    for (const auto& entry : archive.entries()) {
+        message += ' ';
+        message += entry.name;
+    }
+    return message;
+}
+
+}  // namespace
+
 GameFont::GameFont(const Archive& archive)
 {
-    const auto* entry = archive.find("font24.fd0");
-    if (!entry) {
-        throw std::runtime_error("font24.fd0 not found");
+    const auto load = [&](std::string_view name) {
+        const auto* entry = archive.find(name);
+        if (!entry) {
+            throw std::runtime_error(missing_font_message(archive, name));
+        }
+        return archive.read(*entry);
+    };
+    data_ = load(face_name);
+    if (data_.size() < ascii_offset(size)
+            + half_glyph_bitmap_count * glyph_bytes(width, size)) {
+        throw std::runtime_error(std::string(face_name) + " is truncated");
     }
-    data_ = archive.read(*entry);
-    if (data_.size() < ascii_offset + 158 * half_glyph_bytes) {
-        throw std::runtime_error("font24.fd0 is truncated");
-    }
-    const auto* save_entry = archive.find("font16.fd0");
-    if (!save_entry) {
-        throw std::runtime_error("font16.fd0 not found");
-    }
-    save_menu_data_ = archive.read(*save_entry);
-    if (save_menu_data_.size()
-        < save_menu_ascii_offset
-            + half_glyph_bitmap_count * save_menu_half_glyph_bytes) {
+    save_menu_data_ = load("font16.fd0");
+    if (save_menu_data_.size() < ascii_offset(save_menu_size)
+            + half_glyph_bitmap_count
+                * glyph_bytes(save_menu_width, save_menu_size)) {
         throw std::runtime_error("font16.fd0 is truncated");
     }
-    const auto* shadow_entry = archive.find("font24.fk0");
-    if (!shadow_entry) {
-        throw std::runtime_error("font24.fk0 not found");
-    }
-    shadow_data_ = archive.read(*shadow_entry);
-    if (shadow_data_.size()
-        < shadow_ascii_offset + 157 * shadow_half_bytes) {
-        throw std::runtime_error("font24.fk0 is truncated");
+    shadow_data_ = load(shadow_name);
+    if (shadow_data_.size() < 4) {
+        throw std::runtime_error(std::string(shadow_name) + " is truncated");
     }
     shadow_width_ = static_cast<int>(
         shadow_data_[0]
         | shadow_data_[1] << 8
         | shadow_data_[2] << 16
         | shadow_data_[3] << 24);
+    const auto shadow_height = size + shadow_width_ * 2;
+    shadow_full_bytes_ = glyph_bytes(shadow_height, shadow_height);
+    shadow_half_bytes_ =
+        glyph_bytes(width + shadow_width_ * 2, shadow_height);
+    shadow_ascii_offset_ = 4 + full_glyph_count * shadow_full_bytes_;
+    if (shadow_data_.size()
+        < shadow_ascii_offset_ + half_glyph_bitmap_count * shadow_half_bytes_) {
+        throw std::runtime_error(std::string(shadow_name) + " is truncated");
+    }
     modern_ = std::make_unique<Modern>();
     ruby_modern_ = std::make_unique<Modern>();
 }
@@ -223,7 +241,7 @@ const std::uint8_t* GameFont::glyph(unsigned char character) const
 {
     const auto index = glyph_index(character);
     return index < 0 ? nullptr
-        : data_.data() + ascii_offset + index * half_glyph_bytes;
+        : data_.data() + ascii_offset(size) + index * glyph_bytes(width, size);
 }
 
 const std::uint8_t* GameFont::gaiji_bitmap(int index) const
@@ -231,7 +249,7 @@ const std::uint8_t* GameFont::gaiji_bitmap(int index) const
     const auto glyph_index =
         cp932_full_index(static_cast<std::uint16_t>(0xf040 + index));
     return data_.data()
-        + static_cast<std::size_t>(glyph_index) * full_glyph_bytes;
+        + static_cast<std::size_t>(glyph_index) * glyph_bytes(size, size);
 }
 
 int GameFont::glyph_width(unsigned char character) const
@@ -341,7 +359,8 @@ void draw_glyph(
 {
     for (int row = 0; row < glyph_height; ++row) {
         for (int column = 0; column < glyph_width; ++column) {
-            const auto packed = bitmap[row * (glyph_width / 2) + column / 2];
+            const auto packed =
+                bitmap[row * ((glyph_width + 1) / 2) + column / 2];
             const auto coverage =
                 column % 2 == 0 ? packed & 0x0f : packed >> 4;
             if (!coverage) {
@@ -394,13 +413,11 @@ void GameFont::draw_bitmap_face(
     std::uint8_t alpha) const
 {
     const float start_x = x;
-    const auto full_bytes =
-        static_cast<std::size_t>(font_size) * font_size / 2;
-    const auto half_bytes =
-        static_cast<std::size_t>(font_size) * half_width / 2;
-    const auto ascii = full_glyph_count * full_bytes;
-    const float line_step =
-        font_size == GameFont::size ? 31.0f : static_cast<float>(font_size + 4);
+    const auto full_bytes = glyph_bytes(font_size, font_size);
+    const auto half_bytes = glyph_bytes(half_width, font_size);
+    const auto ascii = ascii_offset(font_size);
+    const float line_step = static_cast<float>(
+        font_size == GameFont::size ? GameFont::line_height : font_size + 4);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
     std::string cp932;
@@ -508,7 +525,7 @@ void GameFont::draw(
                 break;
             }
             text.remove_prefix(newline + 1);
-            y += 31.0f;
+            y += static_cast<float>(font_size_ + line_pitch);
         }
         return;
     }
@@ -602,7 +619,7 @@ void GameFont::draw_authentic_shadow(
                     size + shadow_width_ * 2,
                     size + shadow_width_ * 2,
                     shadow_data_.data() + 4
-                        + index * shadow_full_bytes,
+                        + index * shadow_full_bytes_,
                     alpha);
                 x += size;
             } else if (code == 0x8140) {
@@ -611,15 +628,16 @@ void GameFont::draw_authentic_shadow(
             i += 2;
         } else if (is_cp932_half(byte)) {
             const auto index = cp932_half_index(byte);
-            if (index >= 0 && index < 157) {
+            if (index >= 0
+                && index < static_cast<int>(half_glyph_bitmap_count)) {
                 draw_shadow_mask(
                     renderer,
                     x - shadow_width_ + 1.0f,
                     y - shadow_width_ + 1.0f,
                     width + shadow_width_ * 2,
                     size + shadow_width_ * 2,
-                    shadow_data_.data() + shadow_ascii_offset
-                        + index * shadow_half_bytes,
+                    shadow_data_.data() + shadow_ascii_offset_
+                        + index * shadow_half_bytes_,
                     alpha);
             }
             x += width;

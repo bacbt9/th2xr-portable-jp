@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_messagebox.h>
 #include <SDL3/SDL_system.h>
 #include <SDL3/SDL_video.h>
 
@@ -27,6 +28,63 @@ void IoDeleter::operator()(SDL_IOStream* stream) const
 
 // Directory for writable files (config, saves, logs). On Android the current
 // working directory is not writable, so use the app-internal storage path.
+std::filesystem::path path_from_utf8(std::string_view text)
+{
+    return std::filesystem::path(std::u8string(
+        reinterpret_cast<const char8_t*>(text.data()), text.size()));
+}
+
+std::string path_to_utf8(const std::filesystem::path& path)
+{
+    const auto text = path.u8string();
+    return std::string(
+        reinterpret_cast<const char*>(text.data()), text.size());
+}
+
+namespace {
+
+struct LogFile {
+    std::ofstream output;
+    SDL_LogOutputFunction previous = nullptr;
+    void* previous_userdata = nullptr;
+};
+
+void log_to_file(
+    void* userdata, int category, SDL_LogPriority priority,
+    const char* message)
+{
+    auto* log = static_cast<LogFile*>(userdata);
+    if (log->previous) {
+        log->previous(log->previous_userdata, category, priority, message);
+    }
+    log->output << message << std::endl;
+}
+
+}  // namespace
+
+void start_log_file()
+{
+    static LogFile log;
+    std::filesystem::create_directories(writable_directory());
+    log.output.open(
+        writable_directory() / "toheart2.log", std::ios::trunc);
+    if (!log.output) {
+        return;
+    }
+    SDL_GetLogOutputFunction(&log.previous, &log.previous_userdata);
+    SDL_SetLogOutputFunction(log_to_file, &log);
+}
+
+void report_fatal_error(std::string_view message)
+{
+    const std::string text(message);
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", text.c_str());
+    const auto details = text + "\n\nLog: "
+        + path_to_utf8(writable_directory() / "toheart2.log");
+    SDL_ShowSimpleMessageBox(
+        SDL_MESSAGEBOX_ERROR, "ToHeart2", details.c_str(), nullptr);
+}
+
 // On desktop platforms use the system-preferred user data directory so the
 // game works regardless of where the binary is launched from.
 std::filesystem::path writable_directory()
@@ -38,7 +96,7 @@ std::filesystem::path writable_directory()
     if (!path) {
         return std::filesystem::path(".");
     }
-    std::filesystem::path result(path);
+    std::filesystem::path result = path_from_utf8(path);
     SDL_free(path);
     return result;
 #endif
@@ -58,7 +116,7 @@ std::filesystem::path app_config_directory()
     if (!path) {
         return std::filesystem::path(".");
     }
-    std::filesystem::path result(path);
+    std::filesystem::path result = path_from_utf8(path);
     SDL_free(path);
     return result;
 #endif
@@ -84,14 +142,14 @@ std::optional<std::filesystem::path> load_remembered_data_path()
     if (!std::getline(input, line) || line.empty()) {
         return std::nullopt;
     }
-    return std::filesystem::path(line);
+    return path_from_utf8(line);
 }
 
 void save_remembered_data_path(const std::filesystem::path& path)
 {
     std::filesystem::create_directories(app_config_directory());
     std::ofstream output(remembered_data_path_file());
-    output << path.string() << '\n';
+    output << path_to_utf8(path) << '\n';
 }
 
 std::optional<std::filesystem::path> pick_game_executable()
@@ -113,7 +171,7 @@ std::optional<std::filesystem::path> pick_game_executable()
         auto* dialog = static_cast<DialogState*>(userdata);
         std::lock_guard lock(dialog->mutex);
         if (filelist && filelist[0]) {
-            dialog->path = std::filesystem::path(filelist[0]);
+            dialog->path = path_from_utf8(filelist[0]);
         }
         dialog->done = true;
     };
@@ -160,10 +218,11 @@ std::optional<std::filesystem::path> discover_game_data_path(
             save_remembered_data_path(directory);
             return directory;
         }
-        SDL_LogError(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "Selected executable is not in a valid game data directory: %s",
-            executable->string().c_str());
+        report_fatal_error(
+            "The selected file is not in a ToHeart2 XRATED game folder:\n"
+            + path_to_utf8(*executable)
+            + "\n\nThe folder must contain ToHeart2.exe, SDT.PAK and "
+              "GRP.PAK.");
     }
     return std::nullopt;
 }
