@@ -292,6 +292,7 @@ if(ANDROID)
         src/image.cpp
         src/imgui_layer.cpp
         src/message.cpp
+        src/text_layout.cpp
         src/touch_input.cpp
         src/upscaler.cpp
         src/video.cpp
@@ -322,6 +323,7 @@ else()
         src/image.cpp
         src/imgui_layer.cpp
         src/message.cpp
+        src/text_layout.cpp
         src/touch_input.cpp
         src/upscaler.cpp
         src/video.cpp
@@ -419,10 +421,18 @@ if(BUILD_TESTING)
 
     add_executable(th2-message-test
         src/message.cpp
+        src/text_layout.cpp
         src/message_test.cpp
     )
     target_include_directories(th2-message-test PRIVATE src)
     add_test(NAME message-pages COMMAND th2-message-test)
+
+    add_executable(th2-text-layout-test
+        src/text_layout.cpp
+        src/text_layout_test.cpp
+    )
+    target_include_directories(th2-text-layout-test PRIVATE src)
+    add_test(NAME text-layout COMMAND th2-text-layout-test)
 
     add_executable(th2-audio-test
         src/audio_test.cpp
@@ -438,6 +448,7 @@ if(BUILD_TESTING)
 
     add_executable(th2-save-test
         src/message.cpp
+        src/text_layout.cpp
         src/save_test.cpp
     )
     target_include_directories(th2-save-test PRIVATE src)

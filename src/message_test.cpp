@@ -66,4 +66,35 @@ int main()
     if (message.visible() != "Huhuhu\xe2\x99\xaa") {
         return 11;
     }
+
+    // Original TXT_DrawTextEx keeps the text inside tags visible.
+    message.set("<c6:赤い>文字<s3:ゆっくり>です");
+    if (message.visible() != "赤い文字ゆっくりです") {
+        return 12;
+    }
+
+    // Ruby is kept between the interlinear annotation markers.
+    message.set("<r小牧|こまき>さん");
+    if (message.visible()
+        != "\xEF\xBF\xB9小牧\xEF\xBF\xBAこまき\xEF\xBF\xBBさん") {
+        return 13;
+    }
+
+    // ^ is a space, ~ is a comma, and escapes draw the literal character.
+    message.set("a^b~c\\<d\\>\\|\\\\\\^\\~");
+    if (message.visible() != "a b,c<d>|\\^~") {
+        return 14;
+    }
+
+    // Gaiji decoded from CP932 0xF040 pass through untouched.
+    message.set("えっ\xEE\x80\x80");
+    if (message.visible() != "えっ\xEE\x80\x80") {
+        return 15;
+    }
+
+    if (th2::message_markup_text("はい\\nいいえ<w30>\\k。")
+        != "はい\nいいえ。") {
+        return 16;
+    }
+    return 0;
 }
