@@ -52,10 +52,14 @@ Game::Game(
     const std::optional<std::filesystem::path>& scenario,
     const std::optional<std::filesystem::path>& soak_directory,
     std::size_t soak_runs)
-    : scripts_(data / "SDT.PAK"), graphics_(data / "GRP.PAK"),
-      backgrounds_(data / "bak.pak"), fonts_(data / "FNT.PAK"),
-      bgm_archive_(data / "bgm.PAK"), se_archive_(data / "SE.PAK"),
-      voice_archive_(data / "voice.pak"), movie_archive_(data / "mov.pak"),
+    : scripts_(data / "SDT.PAK", data / "patch.pak"),
+      graphics_(data / "GRP.PAK", data / "patch.pak"),
+      backgrounds_(data / "bak.pak", data / "patch.pak"),
+      fonts_(data / "FNT.PAK", data / "patch.pak"),
+      bgm_archive_(data / "bgm.PAK", data / "patch.pak"),
+      se_archive_(data / "SE.PAK", data / "patch.pak"),
+      voice_archive_(data / "voice.pak", data / "patch.pak"),
+      movie_archive_(data / "mov.pak", data / "patch.pak"),
       runtime_(scripts_),
       config_path_(ensure_parent_directory(soak_directory
           ? *soak_directory / "config.ini"

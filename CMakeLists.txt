@@ -445,6 +445,12 @@ if(BUILD_TESTING)
     target_include_directories(th2-message-test PRIVATE src)
     add_test(NAME message-pages COMMAND th2-message-test)
 
+    add_executable(th2-archive-test
+        src/archive_test.cpp
+    )
+    target_link_libraries(th2-archive-test PRIVATE th2_archive)
+    add_test(NAME archive-patch-overlay COMMAND th2-archive-test)
+
     add_executable(th2-text-layout-test
         src/text_layout.cpp
         src/text_layout_test.cpp
