@@ -415,7 +415,7 @@ bool Game::handle(const th2::Event& event)
         }
     } else if (name == "SetSelectMes") {
         choices_.push_back(Choice{
-            interpret_newlines(th2::substitute_player_name(
+            th2::message_markup_text(th2::substitute_player_name(
                 text(event, 0), player_name_,
                 runtime_.flag(213) != 0)),
             number(event, 1),
@@ -448,7 +448,7 @@ bool Game::handle(const th2::Event& event)
         load_script(text(event, 0));
     } else if (name == "SetSelectMes") {
         choices_.push_back(Choice{
-            interpret_newlines(th2::substitute_player_name(
+            th2::message_markup_text(th2::substitute_player_name(
                 text(event, 0), player_name_,
                 runtime_.flag(213) != 0)),
             number(event, 1),

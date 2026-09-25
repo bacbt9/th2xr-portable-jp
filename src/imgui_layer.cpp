@@ -1,10 +1,8 @@
 #include "imgui_layer.hpp"
 
-#include <imgui.h>
+#include "font.hpp"
 
-#ifndef __ANDROID__
-#include <fontconfig/fontconfig.h>
-#endif
+#include <imgui.h>
 
 #include <algorithm>
 #include <cmath>
@@ -15,34 +13,20 @@
 namespace th2 {
 namespace {
 
-std::string find_imgui_font_path()
+// Map ImGui's IME caret to window coordinates so the OS candidate window
+// (Windows IME, SDL_HINT_IME_IMPLEMENTED_UI=none) opens at the text field.
+// ImGui units are rendered at SDL_SetRenderScale(display_scale) in output
+// pixels; SDL_SetTextInputArea wants window coordinates.
+void set_ime_data(
+    ImGuiContext*, ImGuiViewport*, ImGuiPlatformImeData* data)
 {
-#ifdef __ANDROID__
-    return TH2_ANDROID_IMGUI_FONT_PATH;
-#else
-    if (!FcInit()) {
-        return {};
+    auto* layer = static_cast<ImGuiLayer*>(
+        ImGui::GetPlatformIO().Platform_ImeUserData);
+    if (!layer || !data->WantVisible) {
+        return;
     }
-    FcPattern* pattern = FcNameParse(
-        reinterpret_cast<const FcChar8*>("sans-serif"));
-    if (!pattern) {
-        return {};
-    }
-    FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
-    FcDefaultSubstitute(pattern);
-    FcResult result = FcResultNoMatch;
-    FcPattern* match = FcFontMatch(nullptr, pattern, &result);
-    std::string path;
-    if (match) {
-        FcChar8* file = nullptr;
-        if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch) {
-            path = reinterpret_cast<const char*>(file);
-        }
-        FcPatternDestroy(match);
-    }
-    FcPatternDestroy(pattern);
-    return path;
-#endif
+    layer->set_text_input_area(
+        data->InputPos.x, data->InputPos.y, data->InputLineHeight);
 }
 
 ImTextureID texture_id(SDL_Texture* texture)
@@ -140,7 +124,35 @@ ImGuiLayer::ImGuiLayer(SDL_Window* window, SDL_Renderer* renderer)
     io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-    imgui_font_path_ = find_imgui_font_path();
+    // Let the OS draw the IME composition and candidate list (Windows);
+    // read by SDL when text input first starts.
+    SDL_SetHint(SDL_HINT_IME_IMPLEMENTED_UI, "none");
+    auto& platform = ImGui::GetPlatformIO();
+    platform.Platform_ImeUserData = this;
+    platform.Platform_SetImeDataFn = set_ime_data;
+    imgui_font_path_ = bundled_font_path();
+}
+
+void ImGuiLayer::set_text_input_area(float x, float y, float line_height)
+{
+    int window_width = 0;
+    int window_height = 0;
+    int pixel_width = 0;
+    int pixel_height = 0;
+    SDL_GetWindowSize(window_, &window_width, &window_height);
+    SDL_GetWindowSizeInPixels(window_, &pixel_width, &pixel_height);
+    if (window_width <= 0 || pixel_width <= 0 || pixel_height <= 0) {
+        return;
+    }
+    const float scale_x = display_scale_ * window_width / pixel_width;
+    const float scale_y = display_scale_ * window_height / pixel_height;
+    const SDL_Rect area{
+        static_cast<int>(x * scale_x),
+        static_cast<int>(y * scale_y),
+        1,
+        std::max(1, static_cast<int>(std::ceil(line_height * scale_y))),
+    };
+    SDL_SetTextInputArea(window_, &area, 0);
 }
 
 ImGuiLayer::~ImGuiLayer()
@@ -221,27 +233,19 @@ void ImGuiLayer::rebuild_font_atlas(float display_scale)
 {
     auto& io = ImGui::GetIO();
     io.Fonts->Clear();
-#ifdef __ANDROID__
     imgui_font_data_.reset();
-#endif
-    if (!imgui_font_path_.empty()) {
+    // The bundled Japanese font covers kana/kanji for player names; ImGui
+    // 1.92 loads glyphs on demand, so no glyph ranges are needed.
+    std::size_t size = 0;
+    if (void* data = SDL_LoadFile(imgui_font_path_.c_str(), &size)) {
+        imgui_font_data_.reset(data);
+        ImFontConfig config;
+        config.FontDataOwnedByAtlas = false;
         // Scale the reference 13px default size to the monitor DPI.
-#ifdef __ANDROID__
-        std::size_t size = 0;
-        void* data = SDL_LoadFile(imgui_font_path_.c_str(), &size);
-        if (data) {
-            imgui_font_data_.reset(data);
-            ImFontConfig cfg;
-            cfg.FontDataOwnedByAtlas = false;
-            io.Fonts->AddFontFromMemoryTTF(
-                data, static_cast<int>(size), 13.0f * display_scale, &cfg);
-        }
-#else
-        io.Fonts->AddFontFromFileTTF(
-            imgui_font_path_.c_str(), 13.0f * display_scale);
-#endif
-    }
-    if (io.Fonts->Fonts.empty()) {
+        io.Fonts->AddFontFromMemoryTTF(
+            data, static_cast<int>(size), 13.0f * display_scale, &config);
+    } else {
+        SDL_Log("ImGui font unavailable: %s", SDL_GetError());
         io.Fonts->AddFontDefault();
     }
     last_font_scale_ = display_scale;

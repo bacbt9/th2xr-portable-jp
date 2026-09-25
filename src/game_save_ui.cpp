@@ -86,7 +86,7 @@ void Game::draw_save_load()
             120, 43, 56);
         font_.draw_save_menu(
             renderer_, x + 222.0f, y + 10.0f,
-            visible_saves_[i].message.substr(0, 18), 255, 245, 225);
+            visible_saves_[i].message, 255, 245, 225);
         if (slot == newest_save_slot_ && ui_save_new_) {
             const SDL_FRect badge{x + 316.0f, y + 37.0f, 56.0f, 29.0f};
             SDL_RenderTexture(
@@ -148,7 +148,7 @@ void Game::draw_save_load()
             draw_save_digit_sheet_text(x + 152.0f, y + 4.0f, game_date);
             font_.draw_save_menu(
                 renderer_, x + 222.0f, y + 4.0f,
-                visible_saves_[selected].message.substr(0, 18),
+                visible_saves_[selected].message,
                 255, 245, 225);
 
             std::tm local{};
@@ -370,7 +370,7 @@ void Game::activate_save_load_item(int item)
             save_confirm_slot_ = -1;
             ui_mode_ = UiMode::game;
         } else {
-            load_error_ = "Incompatible save version.";
+            load_error_ = "セーブデータのバージョンが違います";
         }
     } else if (item == 14) {
         play_se(-1, 9104, false, 255);
@@ -629,6 +629,7 @@ void Game::draw_backlog()
             font_.draw(renderer_, x + 2.0f, y + 2.0f, line, 0, 0, 0);
         }
         font_.draw(renderer_, x, y, line, 255, 144, 32);
+        draw_ruby_annotations(line, x, y, 255, 144, 32);
         y += text_line_height();
         if (y > 535.0f) {
             break;

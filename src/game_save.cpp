@@ -2,6 +2,7 @@
 
 #include "icon.hpp"
 #include "image.hpp"
+#include "text_layout.hpp"
 
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_log.h>
@@ -94,12 +95,17 @@ void Game::save_preview(int slot)
     }
     std::ofstream metadata(metadata_path(slot));
     if (metadata) {
-        auto excerpt = message_.visible();
-        std::replace(excerpt.begin(), excerpt.end(), '\n', ' ');
+        // SAV_CreateSaveHead: the map screen (MapStep) stores a fixed label,
+        // otherwise the first 18 Shift_JIS bytes of the first window line.
+        const bool on_map = ui_mode_ == UiMode::map
+            || save_return_mode_ == UiMode::map;
+        const auto excerpt = on_map
+            ? std::string("　ＭＡＰ選択")
+            : th2::save_excerpt(message_.visible());
         metadata << std::time(nullptr) << '\n'
                  << runtime_.flag(0) << ' ' << runtime_.flag(1) << ' '
                  << runtime_.flag(2) << '\n'
-                 << excerpt.substr(0, 18) << '\n';
+                 << excerpt << '\n';
     }
 }
 

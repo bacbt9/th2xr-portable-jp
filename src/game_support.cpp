@@ -313,55 +313,6 @@ int scenario_number(std::string_view name)
     return result;
 }
 
-std::vector<std::string> display_lines(
-    std::string_view source, std::size_t wrap_columns)
-{
-    std::vector<std::string> lines;
-    std::string line;
-    bool just_wrapped = false;
-    for (std::size_t position = 0; position < source.size();) {
-        if (source[position] == '\n') {
-            if (!line.empty() || !just_wrapped) {
-                lines.push_back(line);
-            }
-            line.clear();
-            just_wrapped = false;
-            ++position;
-            continue;
-        }
-        line.push_back(source[position++]);
-        just_wrapped = false;
-        // A leading separator after \k is visible immediately. The original
-        // renderer does not wrap until the next printable glyph establishes
-        // that the line is over width.
-        if (line.size() >= wrap_columns && line.back() != ' ') {
-            const auto space = line.find_last_of(' ');
-            if (space != std::string::npos && space > wrap_columns / 2) {
-                lines.push_back(line.substr(0, space));
-                line.erase(0, space + 1);
-            } else {
-                lines.push_back(line);
-                line.clear();
-            }
-            just_wrapped = line.empty();
-        }
-    }
-    if (!line.empty() || lines.empty()) {
-        lines.push_back(line);
-    }
-    return lines;
-}
-
-std::string interpret_newlines(std::string text)
-{
-    for (std::size_t position = 0;
-         (position = text.find("\\n", position)) != std::string::npos;) {
-        text.replace(position, 2, "\n");
-        ++position;
-    }
-    return text;
-}
-
 bool clip_texture_source(
     SDL_Texture* texture, SDL_FRect& source, SDL_FRect& destination)
 {

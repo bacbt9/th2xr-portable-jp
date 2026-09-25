@@ -514,7 +514,7 @@ void Game::draw_frame()
             std::min(text_reveal_start_, visible.size());
         const auto reveal_text = visible.substr(reveal_start);
         const auto reveal_character_count =
-            utf8_character_count(reveal_text);
+            th2::revealed_glyph_count(reveal_text);
         float reveal_position =
             static_cast<float>(reveal_character_count);
         if (!text_reveal_complete_ && config_.text_speed_ms > 0) {
@@ -530,74 +530,83 @@ void Game::draw_frame()
             }
         }
         constexpr float fade_width = 16.0f;
+        const auto glyph_alpha = [&](std::size_t source_offset) {
+            if (text_reveal_complete_ || source_offset < reveal_start) {
+                return 1.0f;
+            }
+            const auto glyph_index = th2::revealed_glyph_count(
+                std::string_view(visible).substr(
+                    reveal_start, source_offset - reveal_start));
+            return std::clamp(
+                reveal_position - static_cast<float>(glyph_index),
+                0.0f, fade_width) / fade_width;
+        };
         const float x = message_text_x();
         float y = message_text_y();
         std::size_t source_cursor = 0;
         const auto lines = display_lines(visible);
-        for (const auto& line : lines) {
+        for (const auto& line_text : lines) {
+            const std::string_view line(line_text);
             auto line_start = visible.find(line, source_cursor);
             if (line_start == std::string_view::npos) {
                 line_start = source_cursor;
             }
-            std::size_t glyph_offset = 0;
-            float authentic_x = x;
-            while (glyph_offset < line.size()) {
-                const auto glyph_bytes = utf8_prefix_bytes(
-                    std::string_view(line).substr(glyph_offset), 1);
-                const auto source_offset = line_start + glyph_offset;
-                float glyph_alpha = 1.0f;
-                if (!text_reveal_complete_
-                    && source_offset >= reveal_start) {
-                    const auto glyph_index = utf8_character_count(
-                        visible.substr(
-                            reveal_start,
-                            source_offset - reveal_start));
-                    glyph_alpha = std::clamp(
-                        reveal_position
-                            - static_cast<float>(glyph_index),
-                        0.0f, fade_width) / fade_width;
+            const auto draw_glyph = [&](std::size_t offset, std::size_t bytes) {
+                const float alpha_fraction = glyph_alpha(line_start + offset);
+                if (alpha_fraction <= 0.0f) {
+                    return alpha_fraction;
                 }
-                if (glyph_alpha > 0.0f) {
-                    const auto glyph_end = glyph_offset + glyph_bytes;
-                    const auto glyph = std::string_view(line).substr(
-                        glyph_offset, glyph_bytes);
-                    const auto alpha = static_cast<std::uint8_t>(
-                        glyph_alpha * 255.0f);
-                    if (font_.authentic()) {
-                        font_.draw_authentic_shadow(
-                            renderer_, authentic_x, y, glyph, alpha);
-                        font_.draw(
-                            renderer_, authentic_x, y, glyph,
-                            255, 255, 255, alpha);
-                        authentic_x += font_.text_width(glyph);
-                        glyph_offset += glyph_bytes;
-                        continue;
-                    }
-                    const auto prefix =
-                        std::string_view(line).substr(0, glyph_offset);
-                    const auto through_glyph =
-                        std::string_view(line).substr(0, glyph_end);
-                    const float glyph_left =
-                        x + font_.text_width(prefix);
-                    const float glyph_right =
-                        x + font_.text_width(through_glyph);
-                    const SDL_Rect clip{
-                        static_cast<int>(std::floor(glyph_left)),
-                        static_cast<int>(std::floor(y)),
-                        std::max(
-                            1, static_cast<int>(
-                                std::ceil(glyph_right - glyph_left))),
-                        31};
-                    SDL_SetRenderClipRect(renderer_, &clip);
+                const auto alpha =
+                    static_cast<std::uint8_t>(alpha_fraction * 255.0f);
+                const float glyph_left =
+                    x + font_.text_width(line.substr(0, offset));
+                const auto glyph = line.substr(offset, bytes);
+                if (font_.authentic()) {
+                    font_.draw_authentic_shadow(
+                        renderer_, glyph_left, y, glyph, alpha);
                     font_.draw(
-                        renderer_, x + 2.0f, y + 2.0f,
-                        line, 0, 0, 0, alpha);
-                    font_.draw(
-                        renderer_, x, y, line,
+                        renderer_, glyph_left, y, glyph,
                         255, 255, 255, alpha);
-                    SDL_SetRenderClipRect(renderer_, nullptr);
+                    return alpha_fraction;
                 }
-                glyph_offset += glyph_bytes;
+                const float glyph_right =
+                    x + font_.text_width(line.substr(0, offset + bytes));
+                const SDL_Rect clip{
+                    static_cast<int>(std::floor(glyph_left)),
+                    static_cast<int>(std::floor(y)),
+                    std::max(
+                        1, static_cast<int>(
+                            std::ceil(glyph_right - glyph_left))),
+                    31};
+                SDL_SetRenderClipRect(renderer_, &clip);
+                font_.draw(renderer_, x + 2.0f, y + 2.0f, line, 0, 0, 0, alpha);
+                font_.draw(renderer_, x, y, line, 255, 255, 255, alpha);
+                SDL_SetRenderClipRect(renderer_, nullptr);
+                return alpha_fraction;
+            };
+            std::size_t offset = 0;
+            while (offset < line.size()) {
+                if (line.substr(offset).starts_with(th2::ruby_anchor)) {
+                    const auto group = th2::parse_ruby_group(line, offset);
+                    float last_alpha = 0.0f;
+                    for (auto base = group.base_begin; base < group.base_end;) {
+                        const auto bytes = th2::utf8_glyph_bytes(line, base);
+                        last_alpha = draw_glyph(base, bytes);
+                        base += bytes;
+                    }
+                    if (last_alpha > 0.0f) {
+                        draw_ruby_reading(
+                            x + font_.text_width(line.substr(0, offset)),
+                            x + font_.text_width(line.substr(0, group.end)),
+                            y, group.reading, 255, 255, 255,
+                            static_cast<std::uint8_t>(last_alpha * 255.0f));
+                    }
+                    offset = group.end;
+                    continue;
+                }
+                const auto bytes = th2::utf8_glyph_bytes(line, offset);
+                draw_glyph(offset, bytes);
+                offset += bytes;
             }
             source_cursor = line_start + line.size();
             y += text_line_height();
@@ -650,6 +659,58 @@ void Game::draw_frame()
     }
     draw_script_position();
     present_frame();
+}
+
+
+void Game::draw_ruby_reading(
+    float left, float right, float line_y, std::string_view reading,
+    std::uint8_t red, std::uint8_t green, std::uint8_t blue,
+    std::uint8_t alpha) const
+{
+    std::size_t glyph_count = 0;
+    for (std::size_t i = 0; i < reading.size();
+         i += th2::utf8_glyph_bytes(reading, i)) {
+        ++glyph_count;
+    }
+    if (glyph_count == 0) {
+        return;
+    }
+    // rx = (base width - ruby width) / 2; the spare width is spread as an
+    // equal pitch after every reading glyph, starting half a pitch in.
+    const float spare = std::floor(
+        ((right - left) - font_.ruby_text_width(reading)) / 2.0f);
+    float pitch = 0.0f;
+    if (spare > 0.0f) {
+        pitch = std::floor(spare * 2.0f / static_cast<float>(glyph_count));
+    }
+    const float ruby_size = font_.authentic()
+        ? 16.0f
+        : std::round(static_cast<float>(config_.font_size) * 2.0f / 3.0f);
+    const float y = line_y - ruby_size - 1.0f;
+    float x = left + std::floor(pitch / 2.0f);
+    for (std::size_t i = 0; i < reading.size();) {
+        const auto bytes = th2::utf8_glyph_bytes(reading, i);
+        const auto glyph = reading.substr(i, bytes);
+        font_.draw_ruby(renderer_, x + 1.0f, y + 1.0f, glyph, 0, 0, 0, alpha);
+        font_.draw_ruby(renderer_, x, y, glyph, red, green, blue, alpha);
+        x += font_.ruby_text_width(glyph) + pitch;
+        i += bytes;
+    }
+}
+
+void Game::draw_ruby_annotations(
+    std::string_view line, float x, float line_y,
+    std::uint8_t red, std::uint8_t green, std::uint8_t blue) const
+{
+    for (auto anchor = line.find(th2::ruby_anchor);
+         anchor != std::string_view::npos;
+         anchor = line.find(th2::ruby_anchor, anchor + 1)) {
+        const auto group = th2::parse_ruby_group(line, anchor);
+        draw_ruby_reading(
+            x + font_.text_width(line.substr(0, anchor)),
+            x + font_.text_width(line.substr(0, group.end)),
+            line_y, group.reading, red, green, blue, 255);
+    }
 }
 
 

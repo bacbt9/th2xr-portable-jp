@@ -271,6 +271,7 @@ if(ANDROID)
     add_library(toheart2 SHARED
         src/anime4k.cpp
         src/font.cpp
+        src/font_modern.cpp
         src/game.cpp
         src/game_backlog_touch.cpp
         src/game_config_ui.cpp
@@ -302,6 +303,7 @@ else()
     add_executable(toheart2
         src/anime4k.cpp
         src/font.cpp
+        src/font_modern.cpp
         src/game.cpp
         src/game_backlog_touch.cpp
         src/game_config_ui.cpp
@@ -368,6 +370,23 @@ foreach(SHADER IN LISTS ANIME4K_SHADERS)
     endif()
 endforeach()
 add_custom_target(anime4k-shaders DEPENDS ${ANIME4K_SHADER_OUTPUTS})
+# Bundled Japanese font, found at runtime in fonts/ next to the executable.
+# Android ships the same file from android/app/src/main/assets/fonts.
+set(BUNDLED_FONT_FILES ZenMaruGothic-Medium.ttf OFL.txt)
+foreach(FONT_FILE IN LISTS BUNDLED_FONT_FILES)
+    add_custom_command(
+        OUTPUT "fonts/${FONT_FILE}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory fonts
+        COMMAND "${CMAKE_COMMAND}" -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/fonts/${FONT_FILE}"
+            "fonts/${FONT_FILE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fonts/${FONT_FILE}"
+        VERBATIM)
+    list(APPEND BUNDLED_FONT_OUTPUTS
+        "${CMAKE_CURRENT_BINARY_DIR}/fonts/${FONT_FILE}")
+endforeach()
+add_custom_target(bundled-fonts DEPENDS ${BUNDLED_FONT_OUTPUTS})
+add_dependencies(toheart2 bundled-fonts)
 add_dependencies(toheart2 anime4k-shaders)
 if(ANDROID)
     add_custom_target(anime4k-shaders-android DEPENDS ${ANDROID_SHADER_ASSET_OUTPUTS})
@@ -377,8 +396,7 @@ if(ANDROID)
     target_compile_definitions(toheart2 PRIVATE
         TH2_ANIME4K_SHADER_DIR="${ANIME4K_SHADER_DIR}"
         TH2_VERSION="${TH2_VERSION}"
-        TH2_ANDROID_FONT_PATH="fonts/LiberationSerif-Regular.ttf"
-        TH2_ANDROID_IMGUI_FONT_PATH="fonts/NotoSans-Regular.ttf")
+        TH2_ANDROID_FONT_PATH="fonts/LiberationSerif-Regular.ttf")
 else()
     target_compile_definitions(toheart2 PRIVATE
         TH2_ANIME4K_SHADER_DIR="${ANIME4K_SHADER_DIR}"

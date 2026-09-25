@@ -16,6 +16,7 @@ cp build/toheart2 "$app/Contents/MacOS/"
 mkdir -p "$app/Contents/Resources/shaders/anime4k"
 cp build/shaders/anime4k/apply.frag.spv "$app/Contents/Resources/shaders/anime4k/"
 cp build/shaders/anime4k/apply.frag.msl "$app/Contents/Resources/shaders/anime4k/"
+cp -r build/fonts "$app/Contents/Resources/"
 
 iconset="$app/Contents/Resources/icon.iconset"
 mkdir -p "$iconset"

@@ -23,7 +23,9 @@ Compared to the original engine, we have:
 
  * Fully resizable window
  * Anime4k-based upscaling of art (optional)
- * Desktop-resolution text rendering, any font (optional)
+ * Desktop-resolution text rendering, any font (optional); defaults to the
+   bundled Japanese font Zen Maru Gothic, which also fills in kana/kanji for
+   any other font you pick
  * Autosaves (optional)
  * Native builds on Mac, Linux, Android
  * Settings in a nice in-game window, replacing the old menu bar
@@ -51,7 +53,7 @@ Grab your platform's build from [releases](https://github.com/ripdog/th2xr-porta
 
 ## Desktop
 
-You need the original game files from the To Heart 2 XRATED English patch. This engine has not been tested with the Japanese release, and probably won't work. (PRs accepted!)
+You need the original game files from the Japanese release of To Heart 2 XRATED. This fork targets the Japanese version: text is laid out with the original engine's rules (30 full-width columns, 禁則 line breaking, ruby/furigana, gaiji), player names follow the original name dialog, and a Japanese font is bundled. The English patch is not a goal of this fork.
 
 Simply run the engine (.exe/.app/.AppImage), and a file picker will appear. Select the toheart2.exe from the game files, and the game will launch.
 
@@ -177,6 +179,12 @@ See [HACKING.md](HACKING.md) for information on developing or debugging the engi
 
 This project is licensed under the GNU General Public License v2.0. See
 [LICENSE.txt](LICENSE.txt) for details.
+
+The bundled font `fonts/ZenMaruGothic-Medium.ttf`
+([Zen Maru Gothic](https://github.com/googlefonts/zen-marugothic), Copyright
+2021 The Zen Maru Gothic Project Authors) is licensed under the SIL Open Font
+License 1.1; see [fonts/OFL.txt](fonts/OFL.txt). Release builds ship it in a
+`fonts/` directory next to the executable.
 
 ## Acknowledgements
 

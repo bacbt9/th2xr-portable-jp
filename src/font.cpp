@@ -1,18 +1,15 @@
 #include "font.hpp"
 
-#include <SDL3_ttf/SDL_ttf.h>
-#ifndef __ANDROID__
-#include <fontconfig/fontconfig.h>
-#endif
+#include "font_modern.hpp"
+#include "text_layout.hpp"
+
 #include <iconv.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
 #include <stdexcept>
-#include <unordered_map>
 
 namespace th2 {
 namespace {
@@ -175,135 +172,12 @@ int cp932_full_index(std::uint16_t code)
     return -1;
 }
 
+bool has_ruby(std::string_view text)
+{
+    return text.find(ruby_anchor) != std::string_view::npos;
+}
+
 }  // namespace
-
-struct GameFont::Modern {
-    struct TextureDeleter {
-        void operator()(SDL_Texture* texture) const
-        {
-            SDL_DestroyTexture(texture);
-        }
-    };
-
-    TTF_Font* font = nullptr;
-    std::string family;
-    int logical_size = 0;
-    float scale = 0.0f;
-    std::unordered_map<
-        std::string, std::unique_ptr<SDL_Texture, TextureDeleter>> textures;
-#ifdef __ANDROID__
-    std::unique_ptr<void, decltype(&SDL_free)> font_data_{nullptr, &SDL_free};
-#endif
-
-    ~Modern()
-    {
-        if (font) {
-            TTF_CloseFont(font);
-        }
-    }
-
-    void open(
-        std::string_view requested_family, int requested_size,
-        float requested_scale)
-    {
-        static const bool initialized = [] {
-            if (!TTF_Init()) {
-                throw std::runtime_error(SDL_GetError());
-            }
-#ifndef __ANDROID__
-            if (!FcInit()) {
-                throw std::runtime_error("fontconfig initialization failed");
-            }
-#endif
-            return true;
-        }();
-        (void)initialized;
-        if (font && family == requested_family
-            && logical_size == requested_size
-            && std::abs(scale - requested_scale) < 0.01f) {
-            return;
-        }
-        if (font) {
-            TTF_CloseFont(font);
-            font = nullptr;
-        }
-#ifdef __ANDROID__
-        font_data_.reset();
-#endif
-        textures.clear();
-
-        std::string path(requested_family);
-        if (!std::filesystem::is_regular_file(path)) {
-#ifdef __ANDROID__
-            path = TH2_ANDROID_FONT_PATH;
-#else
-            FcPattern* pattern = FcNameParse(
-                reinterpret_cast<const FcChar8*>(path.c_str()));
-            if (!pattern) {
-                throw std::runtime_error("cannot parse font family");
-            }
-            FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
-            FcDefaultSubstitute(pattern);
-            FcResult result = FcResultNoMatch;
-            FcPattern* match = FcFontMatch(nullptr, pattern, &result);
-            FcPatternDestroy(pattern);
-            FcChar8* matched_path = nullptr;
-            if (!match
-                || FcPatternGetString(
-                       match, FC_FILE, 0, &matched_path) != FcResultMatch) {
-                if (match) {
-                    FcPatternDestroy(match);
-                }
-                throw std::runtime_error(
-                    "font family not found: " + std::string(requested_family));
-            }
-            path = reinterpret_cast<const char*>(matched_path);
-            FcPatternDestroy(match);
-#endif
-        }
-
-#ifdef __ANDROID__
-        std::size_t font_data_size = 0;
-        void* font_data = SDL_LoadFile(path.c_str(), &font_data_size);
-        if (!font_data) {
-            throw std::runtime_error(
-                std::string("SDL_LoadFile failed for ") + path + ": "
-                + SDL_GetError());
-        }
-        SDL_IOStream* font_io = SDL_IOFromConstMem(font_data, font_data_size);
-        if (!font_io) {
-            SDL_free(font_data);
-            throw std::runtime_error(
-                std::string("SDL_IOFromConstMem failed for ") + path + ": "
-                + SDL_GetError());
-        }
-        // TTF_OpenFontIO takes ownership of the IO stream and (with closeio=true)
-        // will free the const memory reference; we still need to free font_data
-        // because SDL_IOFromConstMem does not copy it. Keep the data alive by
-        // storing it in the Modern object.
-        font_data_ = std::unique_ptr<void, decltype(&SDL_free)>(
-            font_data, &SDL_free);
-        font = TTF_OpenFontIO(font_io, true, requested_size * requested_scale);
-        if (!font) {
-            font_data_.reset();
-            throw std::runtime_error(
-                std::string("TTF_OpenFontIO failed for ") + path + ": "
-                + SDL_GetError());
-        }
-#else
-        font = TTF_OpenFont(path.c_str(), requested_size * requested_scale);
-        if (!font) {
-            throw std::runtime_error(
-                std::string("TTF_OpenFont failed for ") + path + ": "
-                + SDL_GetError());
-        }
-#endif
-        TTF_SetFontHinting(font, TTF_HINTING_LIGHT_SUBPIXEL);
-        family = requested_family;
-        logical_size = requested_size;
-        scale = requested_scale;
-    }
-};
 
 GameFont::GameFont(const Archive& archive)
 {
@@ -315,13 +189,15 @@ GameFont::GameFont(const Archive& archive)
     if (data_.size() < ascii_offset + 158 * half_glyph_bytes) {
         throw std::runtime_error("font24.fd0 is truncated");
     }
-    if (const auto* save_entry = archive.find("font16.fd0")) {
-        save_menu_data_ = archive.read(*save_entry);
-        if (save_menu_data_.size()
-            < save_menu_ascii_offset
-                + half_glyph_bitmap_count * save_menu_half_glyph_bytes) {
-            throw std::runtime_error("font16.fd0 is truncated");
-        }
+    const auto* save_entry = archive.find("font16.fd0");
+    if (!save_entry) {
+        throw std::runtime_error("font16.fd0 not found");
+    }
+    save_menu_data_ = archive.read(*save_entry);
+    if (save_menu_data_.size()
+        < save_menu_ascii_offset
+            + half_glyph_bitmap_count * save_menu_half_glyph_bytes) {
+        throw std::runtime_error("font16.fd0 is truncated");
     }
     const auto* shadow_entry = archive.find("font24.fk0");
     if (!shadow_entry) {
@@ -338,6 +214,7 @@ GameFont::GameFont(const Archive& archive)
         | shadow_data_[2] << 16
         | shadow_data_[3] << 24);
     modern_ = std::make_unique<Modern>();
+    ruby_modern_ = std::make_unique<Modern>();
 }
 
 GameFont::~GameFont() = default;
@@ -349,9 +226,22 @@ const std::uint8_t* GameFont::glyph(unsigned char character) const
         : data_.data() + ascii_offset + index * half_glyph_bytes;
 }
 
+const std::uint8_t* GameFont::gaiji_bitmap(int index) const
+{
+    const auto glyph_index =
+        cp932_full_index(static_cast<std::uint16_t>(0xf040 + index));
+    return data_.data()
+        + static_cast<std::size_t>(glyph_index) * full_glyph_bytes;
+}
+
 int GameFont::glyph_width(unsigned char character) const
 {
     return glyph(character) ? width : 0;
+}
+
+int GameFont::ruby_size() const
+{
+    return static_cast<int>(std::lround(font_size_ * 2.0 / 3.0));
 }
 
 void GameFont::configure(
@@ -359,115 +249,86 @@ void GameFont::configure(
     float framebuffer_scale)
 {
     authentic_ = authentic;
-    family_ = family.empty() ? "sans-serif" : std::string(family);
+    family_ = family.empty() ? std::string(bundled_font_family)
+                             : std::string(family);
     font_size_ = std::clamp(font_size, 12, 48);
     framebuffer_scale_ = std::max(framebuffer_scale, 1.0f);
 }
 
-float GameFont::text_width(std::string_view text) const
+float GameFont::bitmap_text_width(
+    std::string_view text, int full_width, int half_width) const
 {
-    if (authentic_ || text.empty()) {
-        try {
-            const auto cp932 = utf8_to_cp932(text);
-            float result = 0.0f;
-            for (std::size_t i = 0; i < cp932.size();) {
-                const auto byte = static_cast<unsigned char>(cp932[i]);
-                if (byte == '\n') {
-                    break;
-                }
-                if (is_cp932_full_lead(byte)) {
-                    if (i + 1 >= cp932.size()) {
-                        break;
-                    }
-                    const auto code = static_cast<std::uint16_t>(
-                        (byte << 8)
-                        | static_cast<unsigned char>(cp932[i + 1]));
-                    if (code == 0x8140 || cp932_full_index(code) >= 0) {
-                        result += static_cast<float>(size);
-                    }
-                    i += 2;
-                } else if (is_cp932_half(byte)) {
-                    if (cp932_half_index(byte) >= 0) {
-                        result += static_cast<float>(width);
-                    }
-                    ++i;
-                } else {
-                    ++i;
-                }
-            }
-            return result;
-        } catch (const std::exception&) {
-            float result = 0.0f;
-            for (const auto byte : text) {
-                if (byte == '\n') {
-                    break;
-                }
-                if (glyph(static_cast<unsigned char>(byte))) {
-                    result += GameFont::width;
-                }
-            }
-            return result;
-        }
-    }
-
     try {
-        modern_->open(family_, font_size_, framebuffer_scale_);
-        int pixel_width = 0;
-        int pixel_height = 0;
-        if (!TTF_GetStringSize(
-                modern_->font, text.data(), text.size(),
-                &pixel_width, &pixel_height)) {
-            throw std::runtime_error(SDL_GetError());
+        const auto cp932 = utf8_to_cp932(text);
+        float result = 0.0f;
+        for (std::size_t i = 0; i < cp932.size();) {
+            const auto byte = static_cast<unsigned char>(cp932[i]);
+            if (byte == '\n') {
+                break;
+            }
+            if (is_cp932_full_lead(byte)) {
+                if (i + 1 >= cp932.size()) {
+                    break;
+                }
+                const auto code = static_cast<std::uint16_t>(
+                    (byte << 8) | static_cast<unsigned char>(cp932[i + 1]));
+                if (code == 0x8140 || cp932_full_index(code) >= 0) {
+                    result += static_cast<float>(full_width);
+                }
+                i += 2;
+            } else if (is_cp932_half(byte)) {
+                if (cp932_half_index(byte) >= 0) {
+                    result += static_cast<float>(half_width);
+                }
+                ++i;
+            } else {
+                ++i;
+            }
         }
-        return static_cast<float>(pixel_width) / framebuffer_scale_;
-    } catch (const std::exception& error) {
-        SDL_Log("Modern font text_width fallback: %s", error.what());
+        return result;
+    } catch (const std::exception&) {
         float result = 0.0f;
         for (const auto byte : text) {
             if (byte == '\n') {
                 break;
             }
             if (glyph(static_cast<unsigned char>(byte))) {
-                result += GameFont::width;
+                result += static_cast<float>(half_width);
             }
         }
         return result;
     }
 }
 
-const std::vector<std::string>& GameFont::system_families()
+float GameFont::text_width(std::string_view text) const
 {
-    static const std::vector<std::string> families = [] {
-        std::vector<std::string> result;
-#ifdef __ANDROID__
-        result.emplace_back("Liberation Serif");
-#else
-        if (!FcInit()) {
-            return result;
-        }
-        FcPattern* pattern = FcPatternCreate();
-        FcObjectSet* objects = FcObjectSetBuild(FC_FAMILY, nullptr);
-        FcFontSet* fonts = FcFontList(nullptr, pattern, objects);
-        if (fonts) {
-            for (int i = 0; i < fonts->nfont; ++i) {
-                FcChar8* family = nullptr;
-                if (FcPatternGetString(
-                        fonts->fonts[i], FC_FAMILY, 0, &family)
-                    == FcResultMatch) {
-                    result.emplace_back(
-                        reinterpret_cast<const char*>(family));
-                }
-            }
-            FcFontSetDestroy(fonts);
-        }
-        FcObjectSetDestroy(objects);
-        FcPatternDestroy(pattern);
-        std::ranges::sort(result);
-        result.erase(std::unique(result.begin(), result.end()), result.end());
-#endif
-        return result;
-    }();
-    return families;
+    if (has_ruby(text)) {
+        return text_width(strip_ruby(text));
+    }
+    if (authentic_ || text.empty()) {
+        return bitmap_text_width(text, size, width);
+    }
+    try {
+        modern_->open(family_, font_size_, framebuffer_scale_);
+        return modern_->width(text.substr(0, text.find('\n')));
+    } catch (const std::exception& error) {
+        SDL_Log("Modern font text_width fallback: %s", error.what());
+        return bitmap_text_width(text, size, width);
+    }
+}
+
+float GameFont::ruby_text_width(std::string_view text) const
+{
+    if (authentic_ || text.empty()) {
+        return bitmap_text_width(text, save_menu_size, save_menu_width);
+    }
+    try {
+        ruby_modern_->open(family_, ruby_size(), framebuffer_scale_);
+        return ruby_modern_->width(text.substr(0, text.find('\n')));
+    } catch (const std::exception& error) {
+        SDL_Log("Modern ruby text_width fallback: %s", error.what());
+        return bitmap_text_width(text, save_menu_size, save_menu_width);
+    }
 }
 
 namespace {
@@ -629,6 +490,10 @@ void GameFont::draw(
     std::uint8_t red, std::uint8_t green, std::uint8_t blue,
     std::uint8_t alpha) const
 {
+    if (has_ruby(text)) {
+        draw(renderer, x, y, strip_ruby(text), red, green, blue, alpha);
+        return;
+    }
     if (authentic_ || text.empty()) {
         draw_bitmap(renderer, x, y, text, red, green, blue, alpha);
         return;
@@ -650,47 +515,32 @@ void GameFont::draw(
 
     try {
         modern_->open(family_, font_size_, framebuffer_scale_);
-        const SDL_Color color{red, green, blue, 255};
-        std::string key(text);
-        key.append({
-            static_cast<char>(red),
-            static_cast<char>(green),
-            static_cast<char>(blue),
-        });
-        auto found = modern_->textures.find(key);
-        if (found == modern_->textures.end()) {
-            auto* surface = TTF_RenderText_Blended(
-                modern_->font, text.data(), text.size(), color);
-            if (!surface) {
-                throw std::runtime_error(SDL_GetError());
-            }
-            auto* texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_DestroySurface(surface);
-            if (!texture) {
-                throw std::runtime_error(SDL_GetError());
-            }
-            SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-            if (modern_->textures.size() >= 512) {
-                modern_->textures.clear();
-            }
-            found = modern_->textures.emplace(key, texture).first;
-        }
-        float texture_width = 0.0f;
-        float texture_height = 0.0f;
-        SDL_GetTextureSize(
-            found->second.get(), &texture_width, &texture_height);
-        SDL_SetTextureAlphaMod(found->second.get(), alpha);
-        const SDL_FRect destination{
-            x, y,
-            texture_width / framebuffer_scale_,
-            texture_height / framebuffer_scale_};
-        SDL_RenderTexture(
-            renderer, found->second.get(), nullptr, &destination);
-        SDL_SetTextureAlphaMod(found->second.get(), 255);
+        modern_->draw(*this, renderer, x, y, text, red, green, blue, alpha);
     } catch (const std::exception& error) {
         SDL_Log("Modern font draw fallback: %s", error.what());
         draw_bitmap(renderer, x, y, text, red, green, blue, alpha);
     }
+}
+
+void GameFont::draw_ruby(
+    SDL_Renderer* renderer, float x, float y, std::string_view text,
+    std::uint8_t red, std::uint8_t green, std::uint8_t blue,
+    std::uint8_t alpha) const
+{
+    if (!authentic_ && !text.empty()) {
+        try {
+            ruby_modern_->open(family_, ruby_size(), framebuffer_scale_);
+            ruby_modern_->draw(
+                *this, renderer, x, y, text.substr(0, text.find('\n')),
+                red, green, blue, alpha);
+            return;
+        } catch (const std::exception& error) {
+            SDL_Log("Modern ruby draw fallback: %s", error.what());
+        }
+    }
+    draw_bitmap_face(
+        renderer, save_menu_data_, save_menu_size, save_menu_width,
+        x, y, text, red, green, blue, alpha);
 }
 
 void GameFont::draw_original(
@@ -698,6 +548,11 @@ void GameFont::draw_original(
     std::uint8_t red, std::uint8_t green, std::uint8_t blue,
     std::uint8_t alpha) const
 {
+    if (has_ruby(text)) {
+        draw_original(
+            renderer, x, y, strip_ruby(text), red, green, blue, alpha);
+        return;
+    }
     draw_bitmap(renderer, x, y, text, red, green, blue, alpha);
 }
 
@@ -706,8 +561,9 @@ void GameFont::draw_save_menu(
     std::uint8_t red, std::uint8_t green, std::uint8_t blue,
     std::uint8_t alpha) const
 {
-    if (save_menu_data_.empty()) {
-        draw_bitmap(renderer, x, y, text, red, green, blue, alpha);
+    if (has_ruby(text)) {
+        draw_save_menu(
+            renderer, x, y, strip_ruby(text), red, green, blue, alpha);
         return;
     }
     draw_bitmap_face(
@@ -720,6 +576,10 @@ void GameFont::draw_authentic_shadow(
     std::uint8_t alpha) const
 {
     if (!authentic_ || shadow_width_ <= 0 || text.empty()) {
+        return;
+    }
+    if (has_ruby(text)) {
+        draw_authentic_shadow(renderer, x, y, strip_ruby(text), alpha);
         return;
     }
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);

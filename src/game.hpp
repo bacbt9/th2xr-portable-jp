@@ -7,6 +7,7 @@
 #include "gamepad_input.hpp"
 #include "imgui_layer.hpp"
 #include "message.hpp"
+#include "text_layout.hpp"
 #include "persistent_state.hpp"
 #include "player_name.hpp"
 #include "script_runtime.hpp"
@@ -77,9 +78,6 @@ Texture load_toned_texture(
     Surface* pixels = nullptr);
 th2::AudioClip load_audio(const th2::Archive& archive, std::string_view name);
 int scenario_number(std::string_view name);
-std::vector<std::string> display_lines(
-    std::string_view source, std::size_t wrap_columns);
-std::string interpret_newlines(std::string text);
 bool clip_texture_source(
     SDL_Texture* texture, SDL_FRect& source, SDL_FRect& destination);
 class Game {
@@ -660,9 +658,16 @@ private:
     std::vector<std::string> display_lines(std::string_view source) const;
     float message_text_x() const;
     float message_text_y() const;
-    static std::size_t utf8_prefix_bytes(
-        std::string_view text, std::size_t characters);
-    static std::size_t utf8_character_count(std::string_view text);
+    // Furigana above the base text spanning [left, right), laid out like the
+    // original TXT_DrawTextEx ruby tag.
+    void draw_ruby_reading(
+        float left, float right, float line_y, std::string_view reading,
+        std::uint8_t red, std::uint8_t green, std::uint8_t blue,
+        std::uint8_t alpha) const;
+    // Furigana for every ruby group in a display line drawn at x.
+    void draw_ruby_annotations(
+        std::string_view line, float x, float line_y,
+        std::uint8_t red, std::uint8_t green, std::uint8_t blue) const;
     void start_text_reveal(std::size_t start);
     bool finish_text_reveal();
     void skip(bool force_unread = false);
@@ -757,6 +762,7 @@ private:
     void initialize_scenario_flags();
     void start_new_game();
     void open_name_input();
+    void fill_name_input(const th2::PlayerName& name);
     void begin_title_exit(bool start_game);
     void begin_title_menu_transition(bool extras);
     void update_title();
