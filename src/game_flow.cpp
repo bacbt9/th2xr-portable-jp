@@ -205,21 +205,24 @@ std::vector<std::string> Game::choice_lines(
     return lines;
 }
 
+// Novel-mode message layout of the original (GM_AvgMsg.cpp MES_POS_*):
+// 20 full-width glyphs of SYS_FONT per line, lines MES_PICH_H apart.
+constexpr int message_columns = 20;
+
 std::size_t Game::text_wrap_columns() const
 {
-    if (font_.authentic()) {
-        return 60;
-    }
+    const int font_size =
+        font_.authentic() ? th2::GameFont::size : config_.font_size;
     return static_cast<std::size_t>(std::clamp(
-        60 * 24 / std::max(config_.font_size, 1), 30, 80));
+        message_columns * 2 * th2::GameFont::size / std::max(font_size, 1),
+        20, 80));
 }
 
 float Game::text_line_height() const
 {
-    if (font_.authentic()) {
-        return 31.0f;
-    }
-    return static_cast<float>(std::max(31, config_.font_size + 7));
+    const int font_size =
+        font_.authentic() ? th2::GameFont::size : config_.font_size;
+    return static_cast<float>(font_size + th2::GameFont::line_pitch);
 }
 
 std::vector<std::string> Game::display_lines(std::string_view source) const
@@ -229,12 +232,12 @@ std::vector<std::string> Game::display_lines(std::string_view source) const
 
 float Game::message_text_x() const
 {
-    return 26.0f;
+    return 48.0f;
 }
 
 float Game::message_text_y() const
 {
-    return 36.0f;
+    return 50.0f;
 }
 
 void Game::start_text_reveal(std::size_t start)
