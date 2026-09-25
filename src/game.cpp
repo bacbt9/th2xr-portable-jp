@@ -664,6 +664,9 @@ using th2app::writable_directory;
 int main(int argc, char** argv)
 {
     try {
+#ifndef __ANDROID__
+        th2app::start_log_file();
+#endif
         SdlSubsystem sdl_subsystem;
 #ifdef __ANDROID__
         std::filesystem::path data =
@@ -735,17 +738,16 @@ int main(int argc, char** argv)
             SDL_LogError(
                 SDL_LOG_CATEGORY_APPLICATION,
                 "Game data directory not found or invalid: %s",
-                data.string().c_str());
+                th2app::path_to_utf8(data).c_str());
             return 1;
         }
         data = *discovered_data;
-        SDL_Log("Game data path: %s", data.string().c_str());
+        SDL_Log("Game data path: %s", th2app::path_to_utf8(data).c_str());
         SDL_Log("Game files found, starting engine");
 
         return Game(data, scenario, soak_directory, soak_runs).run();
     } catch (const std::exception& error) {
-        SDL_LogError(
-            SDL_LOG_CATEGORY_APPLICATION, "Fatal error: %s", error.what());
+        th2app::report_fatal_error(std::string("Fatal error: ") + error.what());
         return 1;
     }
 }

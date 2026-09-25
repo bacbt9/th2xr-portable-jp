@@ -53,7 +53,16 @@ struct IoDeleter {
 using WindowPtr = std::unique_ptr<SDL_Window, WindowDeleter>;
 using RendererPtr = std::unique_ptr<SDL_Renderer, RendererDeleter>;
 using IoPtr = std::unique_ptr<SDL_IOStream, IoDeleter>;
+// SDL reports paths as UTF-8; std::filesystem::path(const char*) would use
+// the Windows ANSI code page instead.
+std::filesystem::path path_from_utf8(std::string_view text);
+std::string path_to_utf8(const std::filesystem::path& path);
 std::filesystem::path writable_directory();
+// Copy every SDL log line into toheart2.log in the user data directory so
+// startup failures can be diagnosed without a console.
+void start_log_file();
+// Log a fatal error and show it in a message box.
+void report_fatal_error(std::string_view message);
 std::filesystem::path profile_directory();
 std::optional<std::filesystem::path> discover_game_data_path(
     const std::filesystem::path& default_path, bool explicit_path);
