@@ -140,7 +140,7 @@ add_library(th2_config
     src/player_name.cpp
 )
 target_include_directories(th2_config PUBLIC src)
-target_link_libraries(th2_config PUBLIC SQLite3::SQLite3)
+target_link_libraries(th2_config PUBLIC SQLite3::SQLite3 Iconv::Iconv)
 target_compile_options(th2_config PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>)
 
 add_library(th2_soak
