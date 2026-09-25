@@ -2,12 +2,21 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
-#include <fstream>
-#include <iterator>
+
+#include <iconv.h>
 
 namespace th2 {
 namespace {
+
+std::size_t utf8_sequence_bytes(std::string_view value, std::size_t position)
+{
+    const auto lead = static_cast<unsigned char>(value[position]);
+    const std::size_t length = (lead & 0x80) == 0 ? 1
+        : (lead & 0xe0) == 0xc0 ? 2
+        : (lead & 0xf0) == 0xe0 ? 3
+        : (lead & 0xf8) == 0xf0 ? 4 : 1;
+    return std::min(length, value.size() - position);
+}
 
 std::string indexed_value(std::string_view value, char index)
 {
@@ -17,67 +26,44 @@ std::string indexed_value(std::string_view value, char index)
     const auto wanted = static_cast<std::size_t>(index - '1');
     std::size_t position = 0;
     for (std::size_t character = 0; position < value.size(); ++character) {
-        const auto start = position;
-        const auto lead = static_cast<unsigned char>(value[position++]);
-        if ((lead & 0x80) != 0) {
-            int continuation = (lead & 0xe0) == 0xc0 ? 1
-                : (lead & 0xf0) == 0xe0 ? 2
-                : (lead & 0xf8) == 0xf0 ? 3 : 0;
-            while (continuation-- > 0 && position < value.size()) {
-                ++position;
-            }
-        }
+        const auto length = utf8_sequence_bytes(value, position);
         if (character == wanted) {
-            return std::string(value.substr(start, position - start));
+            return std::string(value.substr(position, length));
         }
+        position += length;
     }
     return {};
 }
 
+// Byte length of `glyph` in CP932, or 0 when it has no CP932 encoding.
+std::size_t cp932_bytes(std::string_view glyph)
+{
+    iconv_t converter = iconv_open("CP932", "UTF-8");
+    if (converter == reinterpret_cast<iconv_t>(-1)) {
+        converter = iconv_open("SHIFT_JIS", "UTF-8");
+    }
+    if (converter == reinterpret_cast<iconv_t>(-1)) {
+        return 0;
+    }
+    std::array<char, 8> output{};
+    char* input = const_cast<char*>(glyph.data());
+    std::size_t input_left = glyph.size();
+    char* destination = output.data();
+    std::size_t output_left = output.size();
+    const auto result = iconv(
+        converter, &input, &input_left, &destination, &output_left);
+    iconv_close(converter);
+    if (result == static_cast<std::size_t>(-1) || input_left != 0) {
+        return 0;
+    }
+    return output.size() - output_left;
+}
+
 }  // namespace
 
-PlayerName load_default_player_name(const std::filesystem::path& executable)
+PlayerName load_default_player_name()
 {
-    PlayerName result{
-        "河野", "貴明", "こうの", "たかあき", "たか", "タカ",
-    };
-    std::ifstream input(executable, std::ios::binary);
-    const std::string bytes{
-        std::istreambuf_iterator<char>(input),
-        std::istreambuf_iterator<char>()};
-    const auto read_slot = [&](std::size_t offset) {
-        const auto end = bytes.find('\0', offset);
-        if (end == std::string::npos || end - offset > 12) {
-            return std::string{};
-        }
-        return bytes.substr(offset, end - offset);
-    };
-    const auto translated_name = [](const std::string& value) {
-        return value.size() >= 3
-            && std::all_of(
-                value.begin(), value.end(),
-                [](unsigned char byte) { return std::isalpha(byte); });
-    };
-    for (std::size_t offset = 0; offset + 96 <= bytes.size(); offset += 16) {
-        const std::array values{
-            read_slot(offset),
-            read_slot(offset + 16),
-            read_slot(offset + 32),
-            read_slot(offset + 48),
-            read_slot(offset + 64),
-            read_slot(offset + 80),
-        };
-        if (translated_name(values[0]) && values[0] == values[1]
-            && translated_name(values[2]) && values[2] == values[3]
-            && translated_name(values[4]) && values[4] == values[5]
-            && values[0] != values[2] && values[2] != values[4]) {
-            result = {
-                values[0], values[2], values[1],
-                values[3], values[4], values[5],
-            };
-        }
-    }
-    return result;
+    return {"河野", "貴明", "こうの", "たかあき", "たか", "タカ"};
 }
 
 bool uses_default_voice_name(
@@ -90,16 +76,58 @@ bool uses_default_voice_name(
         && name.nickname == default_name.nickname;
 }
 
+std::string validate_player_name(const PlayerName& name)
+{
+    const std::array fields{
+        &name.family, &name.family_reading, &name.given,
+        &name.given_reading, &name.nickname,
+    };
+    for (const auto* field : fields) {
+        if (field->empty()) {
+            return "名前に未入力の項目があります";
+        }
+    }
+    // The original compares strlen with _mbslen * 2: every character must be
+    // a double-byte Shift_JIS code. Characters Windows cannot convert to
+    // CP932 become a half-width '?', so they fail the same check.
+    for (const auto* field : fields) {
+        for (std::size_t position = 0; position < field->size();) {
+            const auto length = utf8_sequence_bytes(*field, position);
+            if (cp932_bytes(std::string_view(*field).substr(position, length))
+                != 2) {
+                return "名前に半角が含まれています";
+            }
+            position += length;
+        }
+    }
+    for (const auto* field : fields) {
+        std::size_t characters = 0;
+        for (std::size_t position = 0; position < field->size();
+             position += utf8_sequence_bytes(*field, position)) {
+            ++characters;
+        }
+        if (characters > max_player_name_characters) {
+            return "名前は全角6文字以内で入力してください";
+        }
+    }
+    return {};
+}
+
 std::string substitute_player_name(
     std::string_view source, const PlayerName& name,
     bool use_komaki_given_name)
 {
+    // AVG_SetName reads NameNNK only while DefaultCharName is set; a custom
+    // name makes *nnk expand to the nickname instead.
+    const auto& nickname_reading =
+        uses_default_voice_name(name, load_default_player_name())
+        ? name.nickname_reading : name.nickname;
     struct Replacement {
         std::string_view token;
         const std::string* value;
     };
     const std::array replacements{
-        Replacement{"*nnk", &name.nickname_reading},
+        Replacement{"*nnk", &nickname_reading},
         Replacement{"*nlk", &name.family_reading},
         Replacement{"*nfk", &name.given_reading},
         Replacement{"*nn", &name.nickname},
@@ -110,7 +138,7 @@ std::string substitute_player_name(
     std::string result;
     for (std::size_t position = 0; position < source.size();) {
         if (source.substr(position).starts_with("*h2")) {
-            result += use_komaki_given_name ? "Manaka" : "Komaki";
+            result += use_komaki_given_name ? "愛佳" : "小牧";
             position += 3;
             continue;
         }

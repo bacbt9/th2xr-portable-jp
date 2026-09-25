@@ -224,7 +224,7 @@ float Game::text_line_height() const
 
 std::vector<std::string> Game::display_lines(std::string_view source) const
 {
-    return th2app::display_lines(source, text_wrap_columns());
+    return th2::wrap_display_lines(source, text_wrap_columns());
 }
 
 float Game::message_text_x() const
@@ -235,29 +235,6 @@ float Game::message_text_x() const
 float Game::message_text_y() const
 {
     return 36.0f;
-}
-
-std::size_t Game::utf8_prefix_bytes(
-    std::string_view text, std::size_t characters)
-{
-    std::size_t position = 0;
-    while (position < text.size() && characters > 0) {
-        const auto byte = static_cast<unsigned char>(text[position]);
-        position += byte < 0x80 ? 1
-            : byte < 0xe0 ? 2
-            : byte < 0xf0 ? 3
-            : 4;
-        --characters;
-    }
-    return std::min(position, text.size());
-}
-
-std::size_t Game::utf8_character_count(std::string_view text)
-{
-    return std::count_if(
-        text.begin(), text.end(), [](unsigned char byte) {
-            return (byte & 0xc0) != 0x80;
-        });
 }
 
 void Game::start_text_reveal(std::size_t start)

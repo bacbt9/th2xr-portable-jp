@@ -35,7 +35,7 @@ struct GameConfig {
     int window_height = 1200;
     bool anime4k = true;
     bool authentic_font = false;
-    std::string font_family = "Noto Sans";
+    std::string font_family = "Zen Maru Gothic";
     int font_size = 24;
     bool show_script_position = false;
     bool dump_transition_frames = false;

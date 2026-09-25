@@ -7,6 +7,10 @@
 
 namespace th2 {
 
+// Visible text of script markup with every \k checkpoint joined, for text
+// that is shown all at once such as choices.
+std::string message_markup_text(std::string_view source);
+
 class Message {
 public:
     void set(std::string_view source);

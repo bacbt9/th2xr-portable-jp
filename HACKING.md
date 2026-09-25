@@ -240,14 +240,14 @@ discover them with `pkg_check_modules`.
 ### Fonts
 
 The APK bundles two font files under `assets/fonts/`:
-- **Noto Sans Regular** — used by ImGui for the config UI and
-  player-name entry.
-- **Liberation Serif Regular** — used as the in-game modern font
-  fallback.
+- **Zen Maru Gothic Medium** (OFL, a copy of `fonts/ZenMaruGothic-Medium.ttf`)
+  — the default modern font, the Japanese fallback for other families, and
+  the ImGui font for the config UI and player-name entry.
+- **Liberation Serif Regular** — the "Liberation Serif" family choice.
 
 `fontconfig` is disabled on Android (`find_package` is skipped).
-Font paths are injected at compile time via `TH2_ANDROID_FONT_PATH`
-and `TH2_ANDROID_IMGUI_FONT_PATH`.
+The Liberation Serif path is injected at compile time via
+`TH2_ANDROID_FONT_PATH`.
 
 ### Activity lifecycle
 

@@ -83,7 +83,7 @@ Game::Game(
         "Loaded %zu non-zero game flags (flag98=%d)",
         static_cast<std::size_t>(non_zero_flags), persistent_game_flags_[98]);
     default_player_name_ =
-        th2::load_default_player_name(data / "TOHEART2.EXE");
+        th2::load_default_player_name();
     player_name_ = default_player_name_;
     for (std::size_t i = 0; i < persistent_game_flags_.size(); ++i) {
         runtime_.set_game_flag(i, persistent_game_flags_[i]);

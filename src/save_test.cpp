@@ -3,6 +3,7 @@
 #include "character.hpp"
 #include "message.hpp"
 #include "script_runtime.hpp"
+#include "text_layout.hpp"
 
 #include <cstdint>
 #include <cmath>
@@ -347,6 +348,28 @@ int test_backlog_serialization()
     return 0;
 }
 
+int test_save_excerpt()
+{
+    // SAV_CreateSaveHead keeps the first 18 Shift_JIS bytes of the first
+    // window line; the excerpt must never split a UTF-8 glyph.
+    if (th2::save_excerpt("「ねえ、タカくん。今日はどうするの？」")
+        != "「ねえ、タカくん。") {
+        return 1101;
+    }
+    if (th2::save_excerpt("今日は\n晴れ") != "今日は") return 1102;
+    // Half-width glyphs count one byte each.
+    if (th2::save_excerpt("ABC今日はいい天気ですね")
+        != "ABC今日はいい天気") {
+        return 1103;
+    }
+    const std::string ruby = std::string("今日は")
+        + std::string(th2::ruby_anchor) + "雄二"
+        + std::string(th2::ruby_separator) + "ゆうじ"
+        + std::string(th2::ruby_terminator) + "と一緒に帰った";
+    if (th2::save_excerpt(ruby) != "今日は雄二と一緒に") return 1104;
+    return 0;
+}
+
 }  // namespace
 
 int main()
@@ -358,5 +381,6 @@ int main()
     if ((result = test_save_header_format()) != 0) return result;
     if ((result = test_flag_serialization()) != 0) return result;
     if ((result = test_backlog_serialization()) != 0) return result;
+    if ((result = test_save_excerpt()) != 0) return result;
     return 0;
 }

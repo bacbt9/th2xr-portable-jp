@@ -339,12 +339,13 @@ void Game::draw_name_input()
     if (!name_input_open_) {
         return;
     }
+    // Mirrors IDD_DIALOG12 / NameDialogBoxProc in the original Winmain.cpp.
 #ifdef __ANDROID__
     const auto& io = ImGui::GetIO();
     ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::Begin(
-        "Player Name", nullptr,
+        "主人公の名前###player_name", nullptr,
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize
             | ImGuiWindowFlags_NoTitleBar);
     ImGui::BeginChild(
@@ -355,104 +356,71 @@ void Game::draw_name_input()
     ImGui::SetNextWindowPos(
         ImVec2(400.0f, 300.0f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::Begin(
-        "Player Name", nullptr,
+        "主人公の名前###player_name", nullptr,
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
 #endif
-    ImGui::TextUnformatted("Enter the protagonist's name.");
+    ImGui::TextUnformatted("主人公の名前を入力してください");
     ImGui::Separator();
+    // Six full-width characters are at most 18 UTF-8 bytes; the byte cap
+    // stops runaway input while validate_player_name enforces the real rule.
+    constexpr std::size_t input_bytes =
+        th2::max_player_name_characters * 3 + 1;
+    const auto name_field = [&](const char* label, auto& buffer) {
 #ifdef __ANDROID__
-    const auto full_width_input = [&](
-        const char* label, char* buf, std::size_t size) {
+        ImGui::TextUnformatted(label);
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::InputText(label, buf, size);
-    };
-    full_width_input("Family name", name_family_.data(), name_family_.size());
-    full_width_input("Given name", name_given_.data(), name_given_.size());
-    full_width_input(
-        "Family reading", name_family_reading_.data(),
-        name_family_reading_.size());
-    full_width_input(
-        "Given reading", name_given_reading_.data(),
-        name_given_reading_.size());
-    full_width_input("Nickname", name_nickname_.data(), name_nickname_.size());
+        ImGui::InputText(
+            (std::string("##") + label).c_str(), buffer.data(),
+            std::min(buffer.size(), input_bytes));
 #else
-    ImGui::InputText(
-        "Family name", name_family_.data(), name_family_.size());
-    ImGui::InputText(
-        "Given name", name_given_.data(), name_given_.size());
-    ImGui::InputText(
-        "Family reading", name_family_reading_.data(),
-        name_family_reading_.size());
-    ImGui::InputText(
-        "Given reading", name_given_reading_.data(),
-        name_given_reading_.size());
-    ImGui::InputText(
-        "Nickname", name_nickname_.data(), name_nickname_.size());
+        ImGui::InputText(
+            label, buffer.data(), std::min(buffer.size(), input_bytes));
 #endif
+    };
+    name_field("苗字", name_family_);
+    name_field("名前", name_given_);
+    name_field("みょうじ", name_family_reading_);
+    name_field("なまえ", name_given_reading_);
+    name_field("ニックネーム", name_nickname_);
     if (!name_error_.empty()) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s",
             name_error_.c_str());
     }
 #ifdef __ANDROID__
-    if (ImGui::Button("Start Game", ImVec2(-FLT_MIN, 0.0f))) {
-        if (name_family_[0] == '\0' || name_given_[0] == '\0'
-            || name_family_reading_[0] == '\0'
-            || name_given_reading_[0] == '\0'
-            || name_nickname_[0] == '\0') {
-            name_error_ = "Every field must contain a name.";
-        } else {
-            player_name_ = {
-                name_family_.data(),
-                name_given_.data(),
-                name_family_reading_.data(),
-                name_given_reading_.data(),
-                name_nickname_.data(),
-                name_nickname_.data(),
-            };
-            name_input_open_ = false;
-            start_new_game();
-        }
-    }
-    if (ImGui::Button("Reset Defaults", ImVec2(-FLT_MIN, 0.0f))) {
-        open_name_input();
-    }
-    if (ImGui::Button("Cancel", ImVec2(-FLT_MIN, 0.0f))) {
-        name_input_open_ = false;
-        title_started_ = std::chrono::steady_clock::now()
-            - std::chrono::milliseconds(120 * 1000 / 60);
-    }
+    const ImVec2 button_size(-FLT_MIN, 0.0f);
+    const auto next_button = [] {};
 #else
-    if (ImGui::Button("Start Game", ImVec2(120.0f, 0.0f))) {
-        if (name_family_[0] == '\0' || name_given_[0] == '\0'
-            || name_family_reading_[0] == '\0'
-            || name_given_reading_[0] == '\0'
-            || name_nickname_[0] == '\0') {
-            name_error_ = "Every field must contain a name.";
-        } else {
-            player_name_ = {
-                name_family_.data(),
-                name_given_.data(),
-                name_family_reading_.data(),
-                name_given_reading_.data(),
-                name_nickname_.data(),
-                name_nickname_.data(),
-            };
+    const ImVec2 button_size(0.0f, 0.0f);
+    const auto next_button = [] { ImGui::SameLine(); };
+#endif
+    if (ImGui::Button("ゲーム開始", button_size)) {
+        // NameNNK is never edited by the dialog; it keeps DEF_NAME_NNK.
+        th2::PlayerName entered{
+            name_family_.data(),
+            name_given_.data(),
+            name_family_reading_.data(),
+            name_given_reading_.data(),
+            name_nickname_.data(),
+            default_player_name_.nickname_reading,
+        };
+        name_error_ = th2::validate_player_name(entered);
+        if (name_error_.empty()) {
+            player_name_ = std::move(entered);
             name_input_open_ = false;
             start_new_game();
         }
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset Defaults", ImVec2(130.0f, 0.0f))) {
-        open_name_input();
+    next_button();
+    if (ImGui::Button("初期値に戻す", button_size)) {
+        fill_name_input(default_player_name_);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+    next_button();
+    if (ImGui::Button("キャンセル", button_size)) {
         name_input_open_ = false;
         title_started_ = std::chrono::steady_clock::now()
             - std::chrono::milliseconds(120 * 1000 / 60);
     }
-#endif
 #ifdef __ANDROID__
     imgui_->touch_drag_scroll();
     ImGui::EndChild();

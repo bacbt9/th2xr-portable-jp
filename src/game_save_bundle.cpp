@@ -172,17 +172,23 @@ void Game::start_new_game()
 
 void Game::open_name_input()
 {
+    // The original dialog starts from the current name (WM_INITDIALOG).
     name_input_open_ = true;
+    fill_name_input(player_name_);
+}
+
+void Game::fill_name_input(const th2::PlayerName& name)
+{
     name_error_.clear();
     const auto copy = [](auto& destination, const std::string& source) {
         std::snprintf(
             destination.data(), destination.size(), "%s", source.c_str());
     };
-    copy(name_family_, default_player_name_.family);
-    copy(name_given_, default_player_name_.given);
-    copy(name_family_reading_, default_player_name_.family_reading);
-    copy(name_given_reading_, default_player_name_.given_reading);
-    copy(name_nickname_, default_player_name_.nickname);
+    copy(name_family_, name.family);
+    copy(name_given_, name.given);
+    copy(name_family_reading_, name.family_reading);
+    copy(name_given_reading_, name.given_reading);
+    copy(name_nickname_, name.nickname);
 }
 
 void Game::begin_title_exit(bool start_game)

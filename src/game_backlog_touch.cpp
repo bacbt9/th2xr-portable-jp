@@ -332,8 +332,9 @@ void Game::draw_system_menu()
             SDL_SetTextureAlphaMod(ui_sys_menu_btns_.get(), 255);
         } else {
             // Fallback: draw text
-            const char* labels[4] = {"Save", "Load", "Hide Text", "Settings"};
-            const float tw = std::strlen(labels[i]) * 12.0f;
+            const char* labels[4] = {
+                "セーブ", "ロード", "テキスト非表示", "設定"};
+            const float tw = font_.text_width(labels[i]);
             const float tx = dst_x[i] + (400.0f - tw) / 2.0f;
             const float ty = dst_y[i] + (82.0f - 24.0f) / 2.0f;
             font_.draw(renderer_, tx + 2, ty + 2, labels[i], 0, 0, 0);
@@ -359,8 +360,11 @@ void Game::draw_system_menu()
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 40);
             SDL_RenderFillRect(renderer_, &cdst);
         }
-        font_.draw(renderer_, 356.0f, 484.0f, "Close", 0, 0, 0);
-        font_.draw(renderer_, 354.0f, 482.0f, "Close",
+        constexpr std::string_view close_label = "閉じる";
+        const float close_x =
+            cdst.x + (cdst.w - font_.text_width(close_label)) / 2.0f;
+        font_.draw(renderer_, close_x + 2.0f, 484.0f, close_label, 0, 0, 0);
+        font_.draw(renderer_, close_x, 482.0f, close_label,
                    menu_highlight_ == 4 ? 255 : 128,
                    menu_highlight_ == 4 ? 255 : 128,
                    menu_highlight_ == 4 ? 255 : 128);

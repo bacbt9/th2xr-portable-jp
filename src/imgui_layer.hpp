@@ -22,6 +22,8 @@ public:
     bool wants_input() const;
     bool wants_mouse() const;
     void rebuild_font_atlas(float display_scale);
+    // IME caret rectangle in ImGui coordinates (Platform_SetImeDataFn).
+    void set_text_input_area(float x, float y, float line_height);
 
     // Enable vertical drag-to-scroll for the current ImGui window/child on
     // touch screens. Call once per frame inside the scrollable region.
@@ -47,11 +49,9 @@ private:
     float display_scale_ = 1.0f;
     float last_font_scale_ = 0.0f;
     float last_style_scale_ = 0.0f;
-#ifdef __ANDROID__
-    // ImGui's AddFontFromMemoryTTF needs the TTF data to stay alive until
-    // the atlas is built; we free it when the atlas is rebuilt or destroyed.
+    // ImGui 1.92 rasterises glyphs on demand, so the TTF data must outlive
+    // the atlas; it is replaced when the atlas is rebuilt.
     std::unique_ptr<void, decltype(&SDL_free)> imgui_font_data_{nullptr, SDL_free};
-#endif
 };
 
 }  // namespace th2
