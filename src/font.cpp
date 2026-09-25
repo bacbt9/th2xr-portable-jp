@@ -179,11 +179,26 @@ bool has_ruby(std::string_view text)
 
 }  // namespace
 
+namespace {
+
+std::string missing_font_message(const Archive& archive, std::string_view name)
+{
+    std::string message = std::string(name) + " not found in "
+        + archive.path().filename().string() + "; it contains:";
+    for (const auto& entry : archive.entries()) {
+        message += ' ';
+        message += entry.name;
+    }
+    return message;
+}
+
+}  // namespace
+
 GameFont::GameFont(const Archive& archive)
 {
     const auto* entry = archive.find("font24.fd0");
     if (!entry) {
-        throw std::runtime_error("font24.fd0 not found");
+        throw std::runtime_error(missing_font_message(archive, "font24.fd0"));
     }
     data_ = archive.read(*entry);
     if (data_.size() < ascii_offset + 158 * half_glyph_bytes) {
@@ -191,7 +206,7 @@ GameFont::GameFont(const Archive& archive)
     }
     const auto* save_entry = archive.find("font16.fd0");
     if (!save_entry) {
-        throw std::runtime_error("font16.fd0 not found");
+        throw std::runtime_error(missing_font_message(archive, "font16.fd0"));
     }
     save_menu_data_ = archive.read(*save_entry);
     if (save_menu_data_.size()
@@ -201,7 +216,7 @@ GameFont::GameFont(const Archive& archive)
     }
     const auto* shadow_entry = archive.find("font24.fk0");
     if (!shadow_entry) {
-        throw std::runtime_error("font24.fk0 not found");
+        throw std::runtime_error(missing_font_message(archive, "font24.fk0"));
     }
     shadow_data_ = archive.read(*shadow_entry);
     if (shadow_data_.size()
