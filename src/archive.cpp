@@ -114,9 +114,13 @@ void validate_entry(
 
 }  // namespace
 
-Archive::Archive(const std::filesystem::path& path)
+Archive::Archive(
+    const std::filesystem::path& path, const std::filesystem::path& patch)
     : path_(path)
 {
+    if (!patch.empty() && std::filesystem::exists(patch)) {
+        patch_ = std::make_shared<const Archive>(patch);
+    }
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw std::runtime_error("cannot open " + path.string());
@@ -171,8 +175,19 @@ Archive::Archive(const std::filesystem::path& path)
     }
 }
 
+bool Archive::owns(const ArchiveEntry& entry) const
+{
+    return !entries_.empty() && &entry >= entries_.data()
+        && &entry < entries_.data() + entries_.size();
+}
+
 const ArchiveEntry* Archive::find(std::string_view name) const
 {
+    if (patch_) {
+        if (const auto* patched = patch_->find(name)) {
+            return patched;
+        }
+    }
     const auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& entry) {
         return ascii_iequals(entry.name, name);
     });
@@ -181,6 +196,9 @@ const ArchiveEntry* Archive::find(std::string_view name) const
 
 std::vector<std::uint8_t> Archive::read(const ArchiveEntry& entry) const
 {
+    if (patch_ && !owns(entry)) {
+        return patch_->read(entry);
+    }
     std::ifstream input(path_, std::ios::binary);
     input.seekg(entry.offset);
     std::vector<std::uint8_t> stored(entry.stored_size);

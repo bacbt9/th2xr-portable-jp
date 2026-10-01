@@ -55,6 +55,8 @@ Grab your platform's build from [releases](https://github.com/ripdog/th2xr-porta
 
 You need the original game files from the Japanese release of To Heart 2 XRATED. This fork targets the Japanese version: text is laid out with the original engine's rules (30 full-width columns, 禁則 line breaking, ruby/furigana, gaiji), player names follow the original name dialog, and a Japanese font is bundled. The English patch is not a goal of this fork.
 
+Install the official 1.02 update (`TH2X_update102`) the normal way: its `patch.pak` must sit next to `SDT.PAK`. Like the original engine, files in `patch.pak` take priority over the regular archives. The update's `ToHeart2.exe`, `dpl/` and `sss/` are not used by this engine.
+
 Simply run the engine (.exe/.app/.AppImage), and a file picker will appear. Select the toheart2.exe from the game files, and the game will launch.
 
 On macOS you may need to right-click the app and select Open the first time,

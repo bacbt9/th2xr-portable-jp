@@ -58,12 +58,24 @@ public:
 
 private:
     struct Modern;
-    static constexpr int size = 24;
-    static constexpr int width = 12;
+public:
+    // The Japanese release ships the 34px message face (SYS_FONT 34) and
+    // draws message lines 18px apart (MES_PICH_H).
+    static constexpr int size = 34;
+    static constexpr int width = size / 2;
+    static constexpr int line_pitch = 18;
+    static constexpr int line_height = size + line_pitch;
+    static constexpr std::string_view face_name = "font34.fd0";
+    static constexpr std::string_view shadow_name = "font34.fk0";
+
+private:
     std::vector<std::uint8_t> data_;
     std::vector<std::uint8_t> save_menu_data_;
     std::vector<std::uint8_t> shadow_data_;
     int shadow_width_ = 0;
+    std::size_t shadow_full_bytes_ = 0;
+    std::size_t shadow_half_bytes_ = 0;
+    std::size_t shadow_ascii_offset_ = 0;
     std::unique_ptr<Modern> modern_;
     std::unique_ptr<Modern> ruby_modern_;
     bool authentic_ = false;

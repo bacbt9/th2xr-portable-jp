@@ -17,7 +17,7 @@ namespace {
 
 constexpr std::string_view bundled_font_file = "ZenMaruGothic-Medium.ttf";
 constexpr int gaiji_count = 8;
-constexpr int gaiji_size = 24;
+constexpr int gaiji_size = GameFont::size;
 
 void initialize_font_libraries()
 {
@@ -273,12 +273,17 @@ SDL_Texture* GameFont::Modern::gaiji_texture(
     if (texture) {
         return texture.get();
     }
-    // font24.fd0 glyphs are 24x24, 4-bit coverage, low nibble first.
+    // Message-face glyphs are square, 4-bit coverage, low nibble first,
+    // with rows padded to whole bytes.
     const auto* bitmap = owner.gaiji_bitmap(index);
+    constexpr int stride = (gaiji_size + 1) / 2;
     std::vector<std::uint8_t> rgba(gaiji_size * gaiji_size * 4, 255);
     for (int pixel = 0; pixel < gaiji_size * gaiji_size; ++pixel) {
-        const auto packed = bitmap[pixel / 2];
-        const auto coverage = pixel % 2 == 0 ? packed & 0x0f : packed >> 4;
+        const int row = pixel / gaiji_size;
+        const int column = pixel % gaiji_size;
+        const auto packed = bitmap[row * stride + column / 2];
+        const auto coverage =
+            column % 2 == 0 ? packed & 0x0f : packed >> 4;
         rgba[pixel * 4 + 3] = static_cast<std::uint8_t>(coverage * 17);
     }
     texture.reset(SDL_CreateTexture(

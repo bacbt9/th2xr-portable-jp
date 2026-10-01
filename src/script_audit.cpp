@@ -199,7 +199,7 @@ int main(int argc, char** argv)
     try {
         const std::filesystem::path data(argv[1]);
         const std::string_view queried_opcode = argc == 3 ? argv[2] : "";
-        const th2::Archive archive(data / "SDT.PAK");
+        const th2::Archive archive(data / "SDT.PAK", data / "patch.pak");
         const th2::Archive graphics(data / "GRP.PAK");
         const th2::Archive backgrounds(data / "bak.pak");
         const th2::Archive bgm(data / "bgm.PAK");

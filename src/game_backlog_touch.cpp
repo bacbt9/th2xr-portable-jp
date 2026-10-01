@@ -336,7 +336,8 @@ void Game::draw_system_menu()
                 "セーブ", "ロード", "テキスト非表示", "設定"};
             const float tw = font_.text_width(labels[i]);
             const float tx = dst_x[i] + (400.0f - tw) / 2.0f;
-            const float ty = dst_y[i] + (82.0f - 24.0f) / 2.0f;
+            const float ty =
+                dst_y[i] + (82.0f - static_cast<float>(th2::GameFont::size)) / 2.0f;
             font_.draw(renderer_, tx + 2, ty + 2, labels[i], 0, 0, 0);
             if (i == menu_highlight_) {
                 SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 40);
